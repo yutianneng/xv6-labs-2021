@@ -1,0 +1,20 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "xv6debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/kernel/kernel",
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "miDebuggerServerAddress": "127.0.0.1:26002", //见.gdbinit 中 target remote xxxx:xx
+            "miDebuggerPath": "/usr/bin/gdb-multiarch", // which gdb-multiarch
+            "MIMode": "gdb",
+            "preLaunchTask": "xv6build"
+        }
+    ]
+}
