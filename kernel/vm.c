@@ -85,9 +85,11 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
+    //如果该页表项存在，则往下级页目录走
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
+      //如果该页表项不存在，则分配物理页
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
@@ -142,14 +144,16 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 
   if(size == 0)
     panic("mappages: size");
-  
+  //向下取整，按页对齐
   a = PGROUNDDOWN(va);
+  //可能不止一页
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
     if(*pte & PTE_V)
       panic("mappages: remap");
+      //先向右移动12位截断页内偏移，再向左移动10位存放flag
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -343,6 +347,7 @@ uvmclear(pagetable_t pagetable, uint64 va)
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
+//从内核将数据拷贝到用户态，采用的是直接解引用，写入到物理内存中的方式，并没有为每个进程维护一个内核页表
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
@@ -431,4 +436,53 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+void
+vmprinthelper(pagetable_t pagetable, int level){
+  char *indent;
+  if(level==2){
+    indent="..";
+  }else if(level==1){
+    indent=".. ..";
+  }else{
+    indent=".. .. ..";
+  }
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      printf("%s%d: pte %p pa %p\n",indent,i,pte,PTE2PA(pte));
+      if(level>0){
+        vmprinthelper((pagetable_t)child,level-1);
+      }
+    } 
+  }
+}
+//print user page table
+void
+vmprint(pagetable_t pagetable){
+  printf("page table %p\n",pagetable);
+  vmprinthelper(pagetable,2);
+}
+//检测startaddr--startaddr+number*PGSIZE这个范围哪些页面，自上次调用pgaccess以来被访问过，
+//outaddr是用户态地址，用于返回结果
+int pgaccess(pagetable_t pagetable,uint64 startaddr,int number, uint64 outaddr){
+  if(pagetable==0 || number>32 ){
+    return -1;
+  }
+  if(outaddr+4>=MAXVA || startaddr+number*PGSIZE>=MAXVA){
+    return -1;
+  }
+  int accessed;
+  for (int i = 0; i < number; i++){
+    pte_t *pte=walk(pagetable,startaddr+i*PGSIZE,0);
+    if(pte!=0 && ((*pte)&PTE_A)){
+      accessed|=1<<i;
+      *pte^=PTE_A; //清除PTE_A
+    }
+  }
+  return copyout(pagetable,outaddr,(char*)&accessed,sizeof accessed);
 }
