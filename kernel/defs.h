@@ -9,6 +9,8 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+struct trapframe;
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -80,6 +82,7 @@ int             pipewrite(struct pipe*, uint64, int);
 void            printf(char*, ...);
 void            panic(char*) __attribute__((noreturn));
 void            printfinit(void);
+void            backtrace(void);
 
 // proc.c
 int             cpuid(void);
@@ -104,6 +107,7 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+void            copy_trapframe(struct trapframe * p1,struct trapframe * p2);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

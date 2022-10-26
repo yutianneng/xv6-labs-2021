@@ -126,7 +126,6 @@ found:
     release(&p->lock);
     return 0;
   }
-
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -654,3 +653,40 @@ procdump(void)
     printf("\n");
   }
 }
+
+//将p1 copy到p2
+void copy_trapframe(struct trapframe * p1,struct trapframe * p2){
+    if(p1==0 || p2==0) 
+        return;
+    p2->ra = p1->ra;
+    p2->sp = p1->sp;
+    p2->gp = p1->gp;
+    p2->tp = p1->tp;
+    p2->t0 = p1->t0;
+    p2->t1 = p1->t1;
+    p2->t2 = p1->t2;
+    p2->t3 = p1->t3;
+    p2->t4 = p1->t4;
+    p2->t5 = p1->t5;
+    p2->t6 = p1->t6;
+    p2->s0 = p1->s0;
+    p2->s1 = p1->s1;
+    p2->s2 = p1->s2;
+    p2->s3 = p1->s3;
+    p2->s4 = p1->s4;
+    p2->s5 = p1->s5;
+    p2->s6 = p1->s6;
+    p2->s7 = p1->s7;
+    p2->s8 = p1->s8;
+    p2->s9 = p1->s9;
+    p2->s10 = p1->s10;
+    p2->s11 = p1->s11;
+    p2->a0 = p1->a0;
+    p2->a1 = p1->a1;
+    p2->a2 = p1->a2;
+    p2->a3 = p1->a3;
+    p2->a4 = p1->a4;
+    p2->a5 = p1->a5;
+    p2->a6 = p1->a6;
+    p2->a7 = p1->a7;
+};

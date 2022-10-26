@@ -26,6 +26,8 @@ uservec:
         
 	# swap a0 and sscratch
         # so that a0 is TRAPFRAME
+        # sscratch存放的是trampoline frame虚拟地址
+        # 交换a0和sscratch，那么后面的寄存器都会被保存到trampoline frame中。
         csrrw a0, sscratch, a0
 
         # save the user registers in TRAPFRAME
@@ -68,6 +70,7 @@ uservec:
         ld sp, 8(a0)
 
         # make tp hold the current hartid, from p->trapframe->kernel_hartid
+        //cpu核编号
         ld tp, 32(a0)
 
         # load the address of usertrap(), p->trapframe->kernel_trap

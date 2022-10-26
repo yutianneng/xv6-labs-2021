@@ -43,11 +43,14 @@ usertrap(void)
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
+  //取决于trap来自于用户态还是内核态，两者处理方式不一样，来自于内核态可以少做很多事
+  //在内核中，先要将STVEC设置为kernelvec，trampoline是处理用户态的trap。
   w_stvec((uint64)kernelvec);
-
+  //先前将cpu核编号hartid保存在tp寄存器，先从cpu数组里拿到cpu，再从cpu里拿到proc
   struct proc *p = myproc();
   
   // save user program counter.
+  //寄存器是cpu的，为了避免切换到另外一个进程，覆盖了sepc寄存器，将sepc值写入到trapframe
   p->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
@@ -58,15 +61,32 @@ usertrap(void)
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
+    //返回用户态后需要执行ecall后一条指令，而不是重新执行ecall
     p->trapframe->epc += 4;
 
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
+    //开中断，可以接受其他中断
     intr_on();
 
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+    // printf("which_dev: %d, p->in_handler: %d\n",which_dev,p->in_handler);
+    if(which_dev==2&&p->in_handler==0){
+        p->current_tick_num++;
+      //时钟中断时决定是否执行alarm_handler，并且不能够重入
+      if(p->current_tick_num>=p->tick_interval &&  p->tick_interval!=0){
+          acquire(&p->lock);
+          p->in_handler=1;
+          p->current_tick_num=0;
+          p->alarmframe=*p->trapframe;
+          //返回用户态，handler位置，执行完sigreturn进内核
+          //此次回到用户态是为了执行handler
+          p->trapframe->epc=p->alarm_handler;
+          release(&p->lock);
+      }
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -77,8 +97,13 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+    
+  if(which_dev == 2){
+    if(!p->in_handler){
+      printf("pid: %d inhandler\n",p->pid);
+      yield();
+    }
+  }
 
   usertrapret();
 }

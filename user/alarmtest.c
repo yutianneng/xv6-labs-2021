@@ -35,6 +35,7 @@ periodic()
   count = count + 1;
   printf("alarm!\n");
   sigreturn();
+  printf("sigreturn to user mode\n");
 }
 
 // tests whether the kernel calls
@@ -45,6 +46,7 @@ test0()
   int i;
   printf("test0 start\n");
   count = 0;
+  printf("alarmtest test0, interval: %d, handler: %p\n",2,periodic);
   sigalarm(2, periodic);
   for(i = 0; i < 1000*500000; i++){
     if((i % 1000000) == 0)
