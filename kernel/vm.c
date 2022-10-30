@@ -173,9 +173,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      continue;
+      // panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      continue; //lazy alloc，有可能没有分配物理页
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -234,6 +235,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       return 0;
     }
     memset(mem, 0, PGSIZE);
+    //添加页表项
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
@@ -300,26 +302,30 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
+  // printf("uvmcopy...\n");
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue; //lazy allocate
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      // panic("uvmcopy: page not present");
+      continue; //lazy allocate
     pa = PTE2PA(*pte);
+    //清除写标志、设置cow
+    *pte=(*pte&~PTE_W) | PTE_COW; 
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    //增加引用
+    paref(pa);
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    
   }
+  // printf("uvmcopy success, newpg: %p, sz: %d\n",new,sz);
   return 0;
 
  err:
@@ -347,12 +353,28 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
+  uint64 mem;
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+    pte_t *pte=walk(pagetable,va0,0);
+    if(pte==0){
+      return -1;
+    }
+    if(*pte&PTE_COW){
+      mem=(uint64)kcopy_and_unref(pa0);
+        // if((mem=(uint64)kalloc())==0){
+        //   return -1;
+        // }
+        // memmove((void*)mem,(void*)pa0,PGSIZE);
+        *pte=*pte|PTE_W | PTE_R | PTE_U;
+        *pte=*pte&~PTE_COW;
+        uint64 flag=PTE_FLAGS(*pte);
+        *pte=PA2PTE((uint64)mem) | flag;
+        pa0=(uint64)mem;
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -431,4 +453,48 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int uvmcowcopy(pagetable_t pagetable,pte_t * pte,uint64 va){
+    uint64 oldpa=PTE2PA(*pte);
+    uint64 newpa;
+    if((newpa=(uint64)kcopy_and_unref(oldpa))==0){
+      panic("cannot allocate physical memory for lazy alloc!\n");
+      return -1;
+    }
+    // printf("kcopy_and_unref newpa: %p\n",newpa);
+    //去除页表项，并减少物理页的引用
+    *pte=*pte|PTE_W | PTE_R | PTE_U;
+    *pte=*pte&~PTE_COW;
+    uint64 flag=PTE_FLAGS(*pte);
+    *pte=PA2PTE((uint64)newpa) | flag;
+    return 0;
+}
+
+int uvmsbrkalloc(pagetable_t pagetable,pte_t *pte,uint64 va){
+    //sbrk
+    void *pa=kalloc();
+    if(pa==0){
+      return -1;
+    }
+    *pte=*pte | PTE_R | PTE_U | PTE_W;
+    uint64 flag=PTE_FLAGS(*pte);
+    *pte=PA2PTE((uint64)pa) | flag;
+    return 0;
+}
+
+int uvmtrapcopy(pagetable_t pagetable,uint64 va,uint64 sz){
+    if(va>=PHYSTOP ){
+      return 0;
+    }
+    va=PGROUNDDOWN(va);
+    pte_t *pte=walk(pagetable,va,0);
+    printf("uvmtrapcopy va: %p, pte: %p\n",va,*pte);
+    if(pte!=0 &&(*pte &PTE_V) &&(*pte&PTE_COW)){
+      return uvmcowcopy(pagetable,pte,va);
+    }
+    // }else if(pte!=0 && va<sz && (*pte&PTE_V)==0){
+    //   return uvmsbrkalloc(pagetable,pte,va);
+    // }
+    return -1;
 }

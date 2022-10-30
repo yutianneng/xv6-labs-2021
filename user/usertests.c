@@ -122,6 +122,7 @@ copyinstr1(char *s)
       exit(1);
     }
   }
+  printf("copyinstr1 success\n");
 }
 
 // what if a string system call argument is exactly the size
@@ -2684,11 +2685,12 @@ execout(char *s)
       // allocate all of memory.
       while(1){
         uint64 a = (uint64) sbrk(4096);
+        printf("sbrk pid: %d addr: %p\n",getpid(),a);
         if(a == 0xffffffffffffffffLL)
           break;
         *(char*)(a + 4096 - 1) = 1;
       }
-
+      printf("sbrk free memory...\n");
       // free a few pages, in order to let exec() make some
       // progress.
       for(int i = 0; i < avail; i++)
