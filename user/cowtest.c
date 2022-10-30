@@ -16,7 +16,7 @@ simpletest()
   int sz = (phys_size / 3) * 2;
 
   printf("simple: ");
-  
+  printf("sbrk \n");
   char *p = sbrk(sz);
   if(p == (char*)0xffffffffffffffffL){
     printf("sbrk(%d) failed\n", sz);
@@ -180,15 +180,20 @@ filetest()
 int
 main(int argc, char *argv[])
 {
+  printf("first simpletest\n");
   simpletest();
 
+  printf("second simpletest\n");
   // check that the first simpletest() freed the physical memory.
   simpletest();
+  printf("first threetest\n");
+  threetest();
+  printf("second threetest\n");
+  threetest();
+  printf("third threetest\n");
+  threetest();
 
-  threetest();
-  threetest();
-  threetest();
-
+  printf("filetest\n");
   filetest();
 
   printf("ALL COW TESTS PASSED\n");

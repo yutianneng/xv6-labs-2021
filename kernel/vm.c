@@ -148,8 +148,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V){
+      printf("va: %p pa: %p perm: %d\n",va,pa,perm);
       panic("mappages: remap");
+    }
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -320,6 +322,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     flags = PTE_FLAGS(*pte);
     //增加引用
     paref(pa);
+    // printf("uvmcopy va: %p pa: %p perm: %d\n",i,pa,flags);
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
@@ -365,10 +368,6 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     }
     if(*pte&PTE_COW){
       mem=(uint64)kcopy_and_unref(pa0);
-        // if((mem=(uint64)kalloc())==0){
-        //   return -1;
-        // }
-        // memmove((void*)mem,(void*)pa0,PGSIZE);
         *pte=*pte|PTE_W | PTE_R | PTE_U;
         *pte=*pte&~PTE_COW;
         uint64 flag=PTE_FLAGS(*pte);
@@ -457,6 +456,9 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
 int uvmcowcopy(pagetable_t pagetable,pte_t * pte,uint64 va){
     uint64 oldpa=PTE2PA(*pte);
+    if(oldpa==0){
+      return -1;
+    }
     uint64 newpa;
     if((newpa=(uint64)kcopy_and_unref(oldpa))==0){
       panic("cannot allocate physical memory for lazy alloc!\n");
@@ -464,7 +466,7 @@ int uvmcowcopy(pagetable_t pagetable,pte_t * pte,uint64 va){
     }
     // printf("kcopy_and_unref newpa: %p\n",newpa);
     //去除页表项，并减少物理页的引用
-    *pte=*pte|PTE_W | PTE_R | PTE_U;
+    *pte=*pte|PTE_W;
     *pte=*pte&~PTE_COW;
     uint64 flag=PTE_FLAGS(*pte);
     *pte=PA2PTE((uint64)newpa) | flag;
@@ -484,12 +486,12 @@ int uvmsbrkalloc(pagetable_t pagetable,pte_t *pte,uint64 va){
 }
 
 int uvmtrapcopy(pagetable_t pagetable,uint64 va,uint64 sz){
-    if(va>=PHYSTOP ){
-      return 0;
+    if(va>=MAXVA ){
+      return -1;
     }
     va=PGROUNDDOWN(va);
     pte_t *pte=walk(pagetable,va,0);
-    printf("uvmtrapcopy va: %p, pte: %p\n",va,*pte);
+    printf("uvmtrapcopy va: %p, pte: %p, flag: %d\n",va,*pte,PTE_FLAGS(*pte));
     if(pte!=0 &&(*pte &PTE_V) &&(*pte&PTE_COW)){
       return uvmcowcopy(pagetable,pte,va);
     }

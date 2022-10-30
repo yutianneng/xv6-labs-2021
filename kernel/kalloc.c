@@ -48,7 +48,9 @@ kinit()
   freerange(end, (void*)PHYSTOP);
 
   initlock(&kcounter.lock, "kcounter");
-  printf("init kcounter.lock\n");
+  for(int i=0;i< (PHYSTOP-KERNBASE)>>PGSHIFT;i++){
+    kcounter.refcount[i]=0;
+  } 
 }
 
 void

@@ -48,6 +48,7 @@ sys_sbrk(void)
     return -1;
   struct proc *p= myproc();
   addr=p->sz;
+  printf("sbrk sz: %p, n: %d\n",addr,n);
   if(growproc(n) < 0)
     return -1;
   // if(n<0){
