@@ -16,7 +16,6 @@ simpletest()
   int sz = (phys_size / 3) * 2;
 
   printf("simple: ");
-  printf("sbrk \n");
   char *p = sbrk(sz);
   if(p == (char*)0xffffffffffffffffL){
     printf("sbrk(%d) failed\n", sz);

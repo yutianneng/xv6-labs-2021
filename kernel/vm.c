@@ -461,7 +461,7 @@ int uvmcowcopy(pagetable_t pagetable,pte_t * pte,uint64 va){
     }
     uint64 newpa;
     if((newpa=(uint64)kcopy_and_unref(oldpa))==0){
-      panic("cannot allocate physical memory for lazy alloc!\n");
+      // vmprint(pagetable);
       return -1;
     }
     // printf("kcopy_and_unref newpa: %p\n",newpa);
@@ -486,12 +486,9 @@ int uvmsbrkalloc(pagetable_t pagetable,pte_t *pte,uint64 va){
 }
 
 int uvmtrapcopy(pagetable_t pagetable,uint64 va,uint64 sz){
-    if(va>=MAXVA ){
-      return -1;
-    }
     va=PGROUNDDOWN(va);
     pte_t *pte=walk(pagetable,va,0);
-    printf("uvmtrapcopy va: %p, pte: %p, flag: %d\n",va,*pte,PTE_FLAGS(*pte));
+    // printf("uvmtrapcopy va: %p, pte: %p, flag: %d\n",va,*pte,PTE_FLAGS(*pte));
     if(pte!=0 &&(*pte &PTE_V) &&(*pte&PTE_COW)){
       return uvmcowcopy(pagetable,pte,va);
     }

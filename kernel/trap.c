@@ -70,7 +70,7 @@ usertrap(void)
     // ok
   } else if(scause==13 || scause==15){
     uint64 va=r_stval();
-    printf("page fault, scause: %d, pid: %d, va: %p\n",scause,p->pid,va);
+    // printf("page fault, scause: %d, pid: %d, va: %p\n",scause,p->pid,va);
     if (va>=MAXVA || (va<=PGROUNDDOWN(p->trapframe->sp)&&va>=PGROUNDDOWN(p->trapframe->sp)-PGSIZE) ){
       p->killed=-1;
     }else if(uvmtrapcopy(p->pagetable,va,p->sz)<0){

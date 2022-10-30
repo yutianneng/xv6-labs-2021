@@ -2684,10 +2684,12 @@ execout(char *s)
     } else if(pid == 0){
       // allocate all of memory.
       while(1){
-        uint64 a = (uint64) sbrk(4096);
-        printf("sbrk pid: %d addr: %p\n",getpid(),a);
-        if(a == 0xffffffffffffffffLL)
+        char* res= sbrk(4096);
+        uint64 a=(uint64)res;
+        // printf("sbrk pid: %d res: %d,addr: %p\n",getpid(),res,a);
+        if(a == 0xffffffffffffffffLL){
           break;
+        }
         *(char*)(a + 4096 - 1) = 1;
       }
       printf("sbrk free memory...\n");
