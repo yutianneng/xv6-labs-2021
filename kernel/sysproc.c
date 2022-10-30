@@ -54,7 +54,7 @@ sys_sbrk(void)
   // if(n<0){
   //   uvmdealloc(p->pagetable,p->sz,p->sz+n);
   // }
-  p->sz+=n;
+  printf("addr: %d, sz: %d, dist: %d, n: %d\n",addr,p->sz,p->sz-addr,n);
   return addr;
 }
 

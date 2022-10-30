@@ -500,3 +500,34 @@ int uvmtrapcopy(pagetable_t pagetable,uint64 va,uint64 sz){
     // }
     return -1;
 }
+
+
+void
+vmprinthelper(pagetable_t pagetable, int level){
+  char *indent;
+  if(level==2){
+    indent="..";
+  }else if(level==1){
+    indent=".. ..";
+  }else{
+    indent=".. .. ..";
+  }
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      printf("%s%d: pte %p pa %p\n",indent,i,pte,PTE2PA(pte));
+      if(level>0){
+        vmprinthelper((pagetable_t)child,level-1);
+      }
+    } 
+  }
+}
+//print user page table
+void
+vmprint(pagetable_t pagetable){
+  printf("page table %p\n",pagetable);
+  vmprinthelper(pagetable,2);
+}
