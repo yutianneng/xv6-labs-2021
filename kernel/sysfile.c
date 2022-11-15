@@ -467,6 +467,7 @@ sys_pipe(void)
   if(pipealloc(&rf, &wf) < 0)
     return -1;
   fd0 = -1;
+  //分配文件句柄
   if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
     if(fd0 >= 0)
       p->ofile[fd0] = 0;

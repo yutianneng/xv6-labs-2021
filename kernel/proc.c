@@ -446,6 +446,7 @@ scheduler(void)
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) {
+      // printf("pid: %d, state: %d \n",p->pid,p->state);
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
@@ -453,6 +454,8 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        // printf("scheduler swtch in line 458, cpuid: %d\n",cpuid());
+        // printf("swtch p->context sp: %p ra: %p, pid: %d, index: %d\n",p->context.sp,p->context.ra,p->pid,p-proc);
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
