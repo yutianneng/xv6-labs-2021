@@ -40,20 +40,26 @@ e1000_init(uint32 *xregs)
   __sync_synchronize();
 
   // [E1000 14.5] Transmit initialization
+  //初始化tx_ring，即发送buffer的状态
   memset(tx_ring, 0, sizeof(tx_ring));
   for (i = 0; i < TX_RING_SIZE; i++) {
     tx_ring[i].status = E1000_TXD_STAT_DD;
+    //buf是socket层创建并传递过来的
     tx_mbufs[i] = 0;
   }
+  //tx_ring的base地址
   regs[E1000_TDBAL] = (uint64) tx_ring;
   if(sizeof(tx_ring) % 128 != 0)
     panic("e1000");
   regs[E1000_TDLEN] = sizeof(tx_ring);
+  //发送buffer的head和tail，full和empty通过tx_ring[index].status决定
   regs[E1000_TDH] = regs[E1000_TDT] = 0;
   
   // [E1000 14.4] Receive initialization
+  //初始化rx_ring，即接收buffer的状态
   memset(rx_ring, 0, sizeof(rx_ring));
   for (i = 0; i < RX_RING_SIZE; i++) {
+    //在socket层被应用层读取后释放
     rx_mbufs[i] = mbufalloc(0);
     if (!rx_mbufs[i])
       panic("e1000");
@@ -95,13 +101,29 @@ e1000_init(uint32 *xregs)
 int
 e1000_transmit(struct mbuf *m)
 {
-  //
-  // Your code here.
-  //
-  // the mbuf contains an ethernet frame; program it into
-  // the TX descriptor ring so that the e1000 sends it. Stash
-  // a pointer so that it can be freed after sending.
-  //
+
+  acquire(&e1000_lock);
+  uint32 bufindex=regs[E1000_TDT];
+  struct tx_desc *desc=&tx_ring[bufindex];
+  //该packet已经发送完了
+  if(!(desc->status&E1000_TXD_STAT_DD)){
+    release(&e1000_lock);
+    return -1;
+  }
+  //如果该mbuf还未释放，则释放掉
+  if(tx_mbufs[bufindex]){
+    mbuffree(tx_mbufs[bufindex]);
+    tx_mbufs[bufindex]=0;
+  }
+  desc->addr=(uint64)m->head;
+  desc->length=m->len;
+  //该packet是完整的
+  desc->cmd=E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+  tx_mbufs[bufindex]=m;
+
+  regs[E1000_TDT]=(regs[E1000_TDT]+1)%TX_RING_SIZE;
+
+  release(&e1000_lock);
   
   return 0;
 }
@@ -109,12 +131,21 @@ e1000_transmit(struct mbuf *m)
 static void
 e1000_recv(void)
 {
-  //
-  // Your code here.
-  //
-  // Check for packets that have arrived from the e1000
-  // Create and deliver an mbuf for each packet (using net_rx()).
-  //
+  while(1){
+    uint32 bufindex=(regs[E1000_RDT]+1)%RX_RING_SIZE;
+
+    struct rx_desc * desc=&rx_ring[bufindex];
+    if(!(desc->status & E1000_RXD_STAT_DD))
+      return;
+    rx_mbufs[bufindex]->len=desc->length;
+    //数据由设备写入到内存中，不经过CPU，直接调用协议栈处理即可
+    net_rx(rx_mbufs[bufindex]);
+  
+    rx_mbufs[bufindex]=mbufalloc(0);
+    desc->addr=(uint64)rx_mbufs[bufindex]->head;
+    desc->status=0;
+    regs[E1000_RDT]=bufindex;
+  }
 }
 
 void

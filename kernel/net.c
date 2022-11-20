@@ -29,6 +29,7 @@ mbufpull(struct mbuf *m, unsigned int len)
 }
 
 // Prepends data to the beginning of the buffer and returns a pointer to it.
+// m.buf=[0,MBUF_DEFAULT_HEADROOM-1]+[MBUF_DEFAULT_HEADROOM, 2048-1]
 char *
 mbufpush(struct mbuf *m, unsigned int len)
 {
@@ -40,6 +41,7 @@ mbufpush(struct mbuf *m, unsigned int len)
 }
 
 // Appends data to the end of the buffer and returns a pointer to it.
+//找到mbuf中可以写入数据的起始位置，并修改mbuf.len
 char *
 mbufput(struct mbuf *m, unsigned int len)
 {
@@ -164,7 +166,7 @@ static void
 net_tx_eth(struct mbuf *m, uint16 ethtype)
 {
   struct eth *ethhdr;
-
+  //head向低位移动sizeof(ethhdr)，空出首部长度
   ethhdr = mbufpushhdr(m, *ethhdr);
   memmove(ethhdr->shost, local_mac, ETHADDR_LEN);
   // In a real networking stack, dhost would be set to the address discovered
@@ -185,6 +187,7 @@ net_tx_ip(struct mbuf *m, uint8 proto, uint32 dip)
 
   // push the IP header
   iphdr = mbufpushhdr(m, *iphdr);
+  //设置IP首部
   memset(iphdr, 0, sizeof(*iphdr));
   iphdr->ip_vhl = (4 << 4) | (20 >> 2);
   iphdr->ip_p = proto;
@@ -206,6 +209,7 @@ net_tx_udp(struct mbuf *m, uint32 dip,
   struct udp *udphdr;
 
   // put the UDP header
+  //buf向低位移动sizeof(udphdr)字节
   udphdr = mbufpushhdr(m, *udphdr);
   udphdr->sport = htons(sport);
   udphdr->dport = htons(dport);
@@ -357,7 +361,7 @@ void net_rx(struct mbuf *m)
 {
   struct eth *ethhdr;
   uint16 type;
-
+  //从buffer中读取Ethernet header
   ethhdr = mbufpullhdr(m, *ethhdr);
   if (!ethhdr) {
     mbuffree(m);

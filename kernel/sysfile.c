@@ -37,6 +37,7 @@ argfd(int n, int *pfd, struct file **pf)
 
 // Allocate a file descriptor for the given file.
 // Takes over file reference from caller on success.
+// 从进程的文件列表中分配一项空槽位
 static int
 fdalloc(struct file *f)
 {

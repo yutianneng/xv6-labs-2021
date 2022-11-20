@@ -49,16 +49,19 @@ sockalloc(struct file **f, uint32 raddr, uint16 lport, uint16 rport)
   si->lport = lport;
   si->rport = rport;
   initlock(&si->lock, "sock");
+  //初始化待receiving packet
   mbufq_init(&si->rxq);
   (*f)->type = FD_SOCK;
   (*f)->readable = 1;
   (*f)->writable = 1;
+  //文件引用socket
   (*f)->sock = si;
 
   // add to list of sockets
   acquire(&lock);
   pos = sockets;
   while (pos) {
+    //判断是否已经创建过这条连接
     if (pos->raddr == raddr &&
         pos->lport == lport &&
 	pos->rport == rport) {
@@ -67,6 +70,7 @@ sockalloc(struct file **f, uint32 raddr, uint16 lport, uint16 rport)
     }
     pos = pos->next;
   }
+  //将new socket添加到全局sockets队列
   si->next = sockets;
   sockets = si;
   release(&lock);
@@ -145,11 +149,12 @@ sockwrite(struct sock *si, uint64 addr, int n)
   m = mbufalloc(MBUF_DEFAULT_HEADROOM);
   if (!m)
     return -1;
-
+  //将需要发送的数据写入到mbuf中
   if (copyin(pr->pagetable, mbufput(m, n), addr, n) == -1) {
     mbuffree(m);
     return -1;
   }
+  //调用udp协议栈
   net_tx_udp(m, si->raddr, si->lport, si->rport);
   return n;
 }
@@ -177,6 +182,7 @@ sockrecvudp(struct mbuf *m, uint32 raddr, uint16 lport, uint16 rport)
   return;
 
 found:
+  //将新读入的packet放入到socket的receiving queue中给应用层读取。
   acquire(&si->lock);
   mbufq_pushtail(&si->rxq, m);
   wakeup(&si->rxq);

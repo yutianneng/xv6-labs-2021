@@ -80,7 +80,7 @@ static inline uint32 bswapl(uint32 val)
 struct eth {
   uint8  dhost[ETHADDR_LEN];
   uint8  shost[ETHADDR_LEN];
-  uint16 type;
+  uint16 type; //上层协议是IP还是arp
 } __attribute__((packed));
 
 #define ETHTYPE_IP  0x0800 // Internet protocol
