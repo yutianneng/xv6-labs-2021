@@ -114,7 +114,7 @@ consoleread(int user_dst, uint64 dst, int n)
 
     dst++;
     --n;
-
+    //读取整行就退出
     if(c == '\n'){
       // a whole line has arrived, return to
       // the user-level read().
@@ -122,7 +122,7 @@ consoleread(int user_dst, uint64 dst, int n)
     }
   }
   release(&cons.lock);
-
+  //读取字符数
   return target - n;
 }
 
