@@ -579,7 +579,7 @@ writebig(char *s)
     printf("%s: error: creat big failed!\n", s);
     exit(1);
   }
-
+  printf("filesize: %d\n",MAXFILE*BSIZE);
   for(i = 0; i < MAXFILE; i++){
     ((int*)buf)[0] = i;
     if(write(fd, buf, BSIZE) != BSIZE){

@@ -42,6 +42,7 @@ void test1(void)
   void *a, *a1;
   int n, m;
   printf("start test1\n");  
+  //获取统计次数
   m = ntas(0);
   for(int i = 0; i < NCHILD; i++){
     int pid = fork();

@@ -39,7 +39,7 @@ releasesleep(struct sleeplock *lk)
   wakeup(lk);
   release(&lk->lk);
 }
-
+//是否持有该lock
 int
 holdingsleep(struct sleeplock *lk)
 {
