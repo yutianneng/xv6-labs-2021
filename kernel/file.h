@@ -26,7 +26,7 @@ struct inode {
   short minor;
   short nlink;
   uint size;
-  uint addrs[NDIRECT+1];
+  uint addrs[NDIRECT+2]; //12个blocks直接映射，一个block间接映射，一共索引空间：12*1KB+256*1KB
 };
 
 // map major device number to device functions.

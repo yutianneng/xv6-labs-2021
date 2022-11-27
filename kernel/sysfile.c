@@ -294,7 +294,7 @@ sys_open(void)
 
   if((n = argstr(0, path, MAXPATH)) < 0 || argint(1, &omode) < 0)
     return -1;
-
+  //分配log space
   begin_op();
 
   if(omode & O_CREATE){
@@ -304,11 +304,37 @@ sys_open(void)
       return -1;
     }
   } else {
+    //判断path是否存在
     if((ip = namei(path)) == 0){
       end_op();
       return -1;
     }
     ilock(ip);
+    if(ip->type==T_SYMLINK && (omode & O_NOFOLLOW)==0){
+      int count=0;
+      char symlinkpath[MAXPATH];
+      while(1){
+        if(count>10){
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        if(readi(ip,0,(uint64)symlinkpath,ip->size-MAXPATH,MAXPATH)!=MAXPATH){
+          panic("panic: symlink");
+        }
+        iunlockput(ip);
+        if((ip=namei(symlinkpath))==0){
+          end_op();
+          return -1;
+        }
+        ilock(ip);
+        if(ip->type!=T_SYMLINK){
+          break;
+        }
+        count++;
+      }
+    }
+
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -321,7 +347,7 @@ sys_open(void)
     end_op();
     return -1;
   }
-
+  //在ftable中分配一个file，在进程ofiles列表分配一项
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
@@ -482,5 +508,34 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void){
+
+  char target[MAXPATH],path[MAXPATH];
+  if(argstr(0,target,MAXPATH)<0)
+    return -1;
+  if(argstr(1,path,MAXPATH)<0)
+    return -1;
+  struct inode *ip;
+
+  begin_op();
+  //查找该path的文件inode是否存在
+  if((ip = namei(path)) == 0){
+    ip=create(path,T_SYMLINK,0,0);
+    if(ip==0){
+      end_op();
+      return -1;
+    }
+  }else{
+    ilock(ip);
+  }
+  if(writei(ip,0,(uint64)target,ip->size,MAXPATH)!=MAXPATH){
+    panic("panic: symlink");
+  }
+  iunlockput(ip);
+  end_op();
   return 0;
 }

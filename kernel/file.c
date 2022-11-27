@@ -152,7 +152,9 @@ filewrite(struct file *f, uint64 addr, int n)
     // and 2 blocks of slop for non-aligned writes.
     // this really belongs lower down, since writei()
     // might be writing a device like the console.
-    int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
+    //log给每个系统调用分配了MAXOPBLOCKS个logged block
+    //write时会涉及到inode、indirect block，而data如果没对齐可能需要多1block
+    int max = ((MAXOPBLOCKS-1-1-2-2) / 2) * BSIZE;
     int i = 0;
     while(i < n){
       int n1 = n - i;
@@ -161,6 +163,7 @@ filewrite(struct file *f, uint64 addr, int n)
 
       begin_op();
       ilock(f->ip);
+      //从用户空间addr+i的位置拷贝n1个字节写入到文件off位置
       if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
         f->off += r;
       iunlock(f->ip);

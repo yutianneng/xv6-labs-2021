@@ -20,8 +20,9 @@ main()
   while(1){
     *(int*)buf = blocks;
     int cc = write(fd, buf, sizeof(buf));
-    if(cc <= 0)
+    if(cc <= 0){
       break;
+    }
     blocks++;
     if (blocks % 100 == 0)
       printf(".");
@@ -41,6 +42,9 @@ main()
   }
   for(i = 0; i < blocks; i++){
     int cc = read(fd, buf, sizeof(buf));
+    if (i==267){
+      printf("fileblockno: %d, diskblockno: %d\n",i,*(int*)buf);
+    }
     if(cc <= 0){
       printf("bigfile: read error at block %d\n", i);
       exit(-1);

@@ -123,6 +123,7 @@ brelse(struct buf *b)
 
   acquire(&bcache.lock);
   b->refcnt--;
+  //LRU策略，虽然该buffer可以被置换，但它是popular block，应该放入head.next，而不是head.prev
   if (b->refcnt == 0) {
     // no one is waiting for it.
     b->next->prev = b->prev;

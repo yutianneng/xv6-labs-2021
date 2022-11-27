@@ -33,14 +33,14 @@
 // Contents of the header block, used for both the on-disk header block
 // and to keep track in memory of logged block# before commit.
 struct logheader {
-  int n;
+  int n; //lh.block的下一可用槽位
   int block[LOGSIZE];
 };
 
 struct log {
   struct spinlock lock;
-  int start;
-  int size;
+  int start; //log block start
+  int size; //log space size
   int outstanding; // how many FS sys calls are executing.
   int committing;  // in commit(), please wait.
   int dev;
@@ -61,10 +61,12 @@ initlog(int dev, struct superblock *sb)
   log.start = sb->logstart;
   log.size = sb->nlog;
   log.dev = dev;
+  // printf("log start: %d, size: %d, dev: %d\n",log.start,log.size,log.dev);
   recover_from_log();
 }
 
 // Copy committed blocks from log to their home location
+//将logged blocks写回到它所在文件应在的block中，logHeader.block记录blockno
 static void
 install_trans(int recovering)
 {
@@ -74,6 +76,7 @@ install_trans(int recovering)
     struct buf *lbuf = bread(log.dev, log.start+tail+1); // read log block
     struct buf *dbuf = bread(log.dev, log.lh.block[tail]); // read dst
     memmove(dbuf->data, lbuf->data, BSIZE);  // copy block to dst
+    //将logged block写回home block
     bwrite(dbuf);  // write dst to disk
     if(recovering == 0)
       bunpin(dbuf);
@@ -102,10 +105,10 @@ read_head(void)
 static void
 write_head(void)
 {
-  struct buf *buf = bread(log.dev, log.start);
+  struct buf *buf = bread(log.dev, log.start); //也就是blockno=2
   struct logheader *hb = (struct logheader *) (buf->data);
   int i;
-  hb->n = log.lh.n;
+  hb->n = log.lh.n;//更新计数
   for (i = 0; i < log.lh.n; i++) {
     hb->block[i] = log.lh.block[i];
   }
@@ -152,6 +155,7 @@ end_op(void)
   log.outstanding -= 1;
   if(log.committing)
     panic("log.committing");
+  //等待一批系统调用处理完成，批量提交
   if(log.outstanding == 0){
     do_commit = 1;
     log.committing = 1;
@@ -183,7 +187,9 @@ write_log(void)
   for (tail = 0; tail < log.lh.n; tail++) {
     struct buf *to = bread(log.dev, log.start+tail+1); // log block
     struct buf *from = bread(log.dev, log.lh.block[tail]); // cache block
+    //将cache block复制到logged block中
     memmove(to->data, from->data, BSIZE);
+    //将logged block刷盘
     bwrite(to);  // write the log
     brelse(from);
     brelse(to);
@@ -217,18 +223,21 @@ log_write(struct buf *b)
   int i;
 
   acquire(&log.lock);
+  //log空间已经达到上限了，log.size-1是因为log header block占了一个
   if (log.lh.n >= LOGSIZE || log.lh.n >= log.size - 1)
     panic("too big a transaction");
+  //不在事务内
   if (log.outstanding < 1)
     panic("log_write outside of trans");
-
+  //
   for (i = 0; i < log.lh.n; i++) {
     if (log.lh.block[i] == b->blockno)   // log absorption
       break;
   }
+  //在log header中分配一个block用于此次write
   log.lh.block[i] = b->blockno;
   if (i == log.lh.n) {  // Add new block to log?
-    bpin(b);
+    bpin(b); //增加一次引用，被log引用
     log.lh.n++;
   }
   release(&log.lock);

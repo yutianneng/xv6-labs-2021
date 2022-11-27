@@ -218,6 +218,7 @@ ialloc(uint dev, short type)
 // Must be called after every change to an ip->xxx field
 // that lives on disk.
 // Caller must hold ip->lock.
+//更新inode到磁盘
 void
 iupdate(struct inode *ip)
 {
@@ -374,19 +375,20 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+//返回该偏移量的block地址
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
-
+  //从直接索引读取blockno
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
       ip->addrs[bn] = addr = balloc(ip->dev);
     return addr;
   }
   bn -= NDIRECT;
-
+  //从二级索引中读取blockno
   if(bn < NINDIRECT){
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
@@ -397,7 +399,35 @@ bmap(struct inode *ip, uint bn)
       a[bn] = addr = balloc(ip->dev);
       log_write(bp);
     }
+    brelse(bp);  
+    return addr;
+  }
+  //访问三级索引
+  bn-=NINDIRECT;
+  if(bn < NDBINDIRECT){
+    // Load indirect block, allocating if necessary.
+    //分配顶级目录
+    if((addr = ip->addrs[NDIRECT+1]) == 0)
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    //分配二级目录
+    int mediumindex=bn/NINDIRECT;
+    if((addr = a[mediumindex]) == 0){
+      a[mediumindex] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
     brelse(bp);
+    //分配一级目录
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    int bottomindex=bn%NINDIRECT;
+    if((addr = a[bottomindex]) == 0){
+      a[bottomindex] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    // printf("三级索引，bn[%d],addr[%d]\n",bn,addr);
     return addr;
   }
 
@@ -412,14 +442,14 @@ itrunc(struct inode *ip)
   int i, j;
   struct buf *bp;
   uint *a;
-
+  //释放直接索引的block
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
       bfree(ip->dev, ip->addrs[i]);
       ip->addrs[i] = 0;
     }
   }
-
+  //释放间接索引的block
   if(ip->addrs[NDIRECT]){
     bp = bread(ip->dev, ip->addrs[NDIRECT]);
     a = (uint*)bp->data;
@@ -431,8 +461,32 @@ itrunc(struct inode *ip)
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
   }
+  //释放二级间接索引
+  //释放间接索引的block
+  if(ip->addrs[NDIRECT+1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
+    a = (uint*)bp->data;
+    struct buf* bbp;
+    uint *aa;
+    for(j = 0; j < NINDIRECT; j++){
+      if(0==a[j])
+        continue;
+      bbp=bread(ip->dev,a[j]);
+      aa=(uint*)bbp->data;
+      for(int i=0;i< NINDIRECT;i++){
+        if(aa[i])
+          bfree(ip->dev,aa[i]);
+      } 
+      brelse(bbp);
+    }
+
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT+1]);
+    ip->addrs[NDIRECT+1] = 0;
+  }
 
   ip->size = 0;
+  //更新磁盘上inode
   iupdate(ip);
 }
 
@@ -496,6 +550,7 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
 
   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
     bp = bread(ip->dev, bmap(ip, off/BSIZE));
+    //为了左右边界对齐
     m = min(n - tot, BSIZE - off%BSIZE);
     if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) {
       brelse(bp);
@@ -606,16 +661,18 @@ skipelem(char *path, char *name)
     path++;
   if(*path == 0)
     return 0;
+  //读取该级目录名
   s = path;
   while(*path != '/' && *path != 0)
     path++;
-  len = path - s;
+  len = path - s;//该级目录名长度
   if(len >= DIRSIZ)
     memmove(name, s, DIRSIZ);
   else {
     memmove(name, s, len);
     name[len] = 0;
   }
+  //跳过‘/’
   while(*path == '/')
     path++;
   return path;
@@ -633,7 +690,7 @@ namex(char *path, int nameiparent, char *name)
   if(*path == '/')
     ip = iget(ROOTDEV, ROOTINO);
   else
-    ip = idup(myproc()->cwd);
+    ip = idup(myproc()->cwd); //增加inode.ref
 
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
