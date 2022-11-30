@@ -299,6 +299,14 @@ fork(void)
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
+
+  for(int i=0;i< MAXVMAPERPROC;i++){
+    if(p->pvma[i].valid){
+      np->pvma[i]=p->pvma[i];
+      filedup(np->pvma[i].f);
+    }
+  } 
+  
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
@@ -352,6 +360,13 @@ exit(int status)
       p->ofile[fd] = 0;
     }
   }
+  //释放mmap region
+  for(int i=0;i< MAXVMAPERPROC;i++){
+    if(p->pvma[i].valid){
+      munmap(p->pvma[i].addr,p->pvma[i].len);
+      p->pvma[i].valid=0;
+    }
+  } 
 
   begin_op();
   iput(p->cwd);

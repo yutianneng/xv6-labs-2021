@@ -80,6 +80,17 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+struct vma{
+  int valid;
+  uint64 addr; //user space addr
+  uint len; //按页向上取整
+  struct file *f;
+  uint offset;
+  uint flags; //MAP_PRIVATE: 不会更新到磁盘 MAP_SHARED: 会刷盘
+  uint prot; //访问权限
+};
+
+
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
@@ -105,4 +116,5 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  struct vma pvma[MAXVMAPERPROC];
 };

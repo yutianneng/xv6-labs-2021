@@ -5,6 +5,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "proc.h"
+#include "fcntl.h"
+#include "file.h"
 
 /*
  * the kernel's page table.
@@ -173,11 +178,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      continue;
     if(PTE_FLAGS(*pte) == PTE_V)
-      panic("uvmunmap: not a leaf");
+      continue;
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
@@ -307,9 +312,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -432,3 +437,140 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+int vm_exists(pagetable_t pagetable, uint64 va){
+  pte_t *pte;
+  return (pte=walk(pagetable,va,0)) && (*pte & PTE_V);
+}
+int mmap_pgfaulthandler(uint64 va){
+  va=PGROUNDDOWN(va);
+  struct vma *a=0;
+  //缺页处理
+  struct proc *p=myproc();
+  struct vma *pvma=p->pvma;
+  for(int i=0;i< MAXVMAPERPROC;i++){
+    if(p->pvma[i].valid && va>=pvma[i].addr && va<pvma[i].addr+pvma[i].len){
+      a=&pvma[i];
+      break;
+    }
+  }       
+  if(a==0)
+    return -1;
+
+  uint64 pa=(uint64)kalloc();
+  if(pa==0)
+    return -1;
+  memset((void*)pa,0,PGSIZE);
+  int flag=PTE_U;
+  flag|=a->prot & PROT_READ ? PTE_R:0;
+  flag|=a->prot & PROT_WRITE ? PTE_W:0;
+  if(mappages(p->pagetable,va,PGSIZE,pa,flag)!=0){
+    kfree((void*)pa);
+    return -1;
+  }
+  ilock(a->f->ip);
+  printf("trap: va[%p]\n",va);
+  if(readi(a->f->ip,0,pa,a->offset+va-a->addr,PGSIZE)<=0){
+    iunlock(a->f->ip);
+    return -1;
+  }
+  iunlock(a->f->ip);
+  return 0;  
+}
+
+int
+munmap_writeback(uint64 unstart, uint64 unlen, uint64 start, uint64 offset, struct vma *a)
+{
+  struct file *f = a->f;
+  uint off = unstart - start + offset;
+  uint size;
+
+  ilock(f->ip);
+  size = f->ip->size;
+  iunlock(f->ip);
+
+  if(off >= size) return -1;
+
+  uint n = unlen < size - off ? unlen : size - off;
+
+  int r, ret = 0;
+  int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
+  int i = 0;
+  while(i < n){
+    int n1 = n - i;
+    if(n1 > max)
+      n1 = max;
+
+    begin_op();
+    ilock(f->ip);
+    r = writei(f->ip, 1, unstart, off + i, n1);
+    iunlock(f->ip);
+    end_op();
+
+    if(r != n1){
+      // error from writei
+      break;
+    }
+    i += r;
+  }
+  ret = (i == n ? n : -1);
+
+  return ret;
+}
+int munmap(uint64 addr,int length){
+
+  struct proc *p = myproc();
+  struct vma *a = 0;
+  addr = PGROUNDDOWN(addr);
+
+  for(int i = 0; i < MAXVMAPERPROC; i++){
+    if(p->pvma[i].valid && addr >= p->pvma[i].addr && addr < p->pvma[i].addr+p->pvma[i].len){
+      a = &p->pvma[i];
+      break;
+    }
+  }
+
+  if (a == 0) return -1;
+
+  uint64 unstart, unlen;
+  uint64 start = a->addr, offset = a->offset, orilen = a->len;
+
+  if(addr == a->addr){
+    // Unmap at the start
+    unstart = addr;
+    unlen = PGROUNDUP(length) < a->len ? PGROUNDUP(length) : a->len;
+
+    a->addr = unstart + unlen; 
+    a->len = start+orilen - a->addr;
+    a->offset = a->offset + unlen;
+  } else if(addr + length >= start+orilen){
+    // Unmap at the end
+    unstart = start;
+    unlen = start+orilen - unstart;
+
+    a->len = unstart-start;
+  } else{
+    // Unmap the whole region
+    unstart = start;
+    unlen = orilen;
+  }
+  
+  for(int i = 0; i < unlen / PGSIZE; i++){
+    uint64 va = unstart + i * PGSIZE;
+    // May not be alloced due to lazy alloc through page fault.
+    if(vm_exists(p->pagetable, va)){
+      if(a->flags & MAP_SHARED){
+        munmap_writeback(va, PGSIZE, start, offset, a);
+      }
+
+      uvmunmap(p->pagetable, va, 1, 1);
+    }
+  }
+
+  if(unlen == orilen){
+    fileclose(a->f);
+    a->valid = 0;
+  }
+  
+  return 0;
+} 
+

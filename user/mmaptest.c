@@ -142,6 +142,7 @@ mmap_test(void)
   if ((fd = open(f, O_RDONLY)) == -1)
     err("open");
   p = mmap(0, PGSIZE*3, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  printf("test mmap read-only, p: %p, failed: %p\n",p,MAP_FAILED);
   if (p != MAP_FAILED)
     err("mmap call should have failed");
   if (close(fd) == -1)
